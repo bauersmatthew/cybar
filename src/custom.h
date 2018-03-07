@@ -175,7 +175,7 @@ namespace custom {
         virtual void update(Event const& ev) {
             // ping google DNS
             std::unique_ptr<FILE, decltype(&pclose)> ping(
-                    popen("ping -c 1 -s 0 8.8.8.8", "r"),
+                    popen("ping -c 1 -s 0 8.8.8.8 -w 1", "r"),
                     pclose);
             char first = fgetc(ping.get());
             bool connected = (first == 'P');
