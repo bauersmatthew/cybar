@@ -319,12 +319,14 @@ namespace custom {
                     0, (~0L), false, AnyPropertyType, &actual_type,
                     &actual_format, &nitems, &bytes_after,
                     (unsigned char**)&prop);
-            active = prop[0];
             active_wnd_idx = -1;
-            for (int i = 0; i < wnd_list.size(); i++) {
-                if (wnd_list[i].first == active) {
-                    active_wnd_idx = i;
-                    break;
+            if (nitems > 0) {
+                active = prop[0];
+                for (int i = 0; i < wnd_list.size(); i++) {
+                    if (wnd_list[i].first == active) {
+                        active_wnd_idx = i;
+                        break;
+                    }
                 }
             }
             XFree(prop);
