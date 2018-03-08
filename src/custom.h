@@ -47,7 +47,7 @@ namespace custom {
 
             // remove leading 0
             std::string timestr = buff;
-            if (timestr[0] = '0') {
+            if (timestr[0] == '0') {
                 timestr = timestr.substr(1, timestr.length()-1);
             }
 
