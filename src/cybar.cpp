@@ -150,7 +150,8 @@ void gfx::init() {
             PropModeAppend, (unsigned char*)(&atom_wmtype_dock), 1);
 
     XSelectInput(dpy, wnd, 0
-            | ExposureMask | ButtonReleaseMask | ButtonPressMask);
+            | ExposureMask | ButtonReleaseMask | ButtonPressMask
+            | KeyPressMask | KeyReleaseMask);
     XSelectInput(dpy, root, 0
             | SubstructureNotifyMask | PropertyChangeMask);
     XMapRaised(dpy, wnd);

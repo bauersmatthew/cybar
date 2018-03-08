@@ -257,9 +257,15 @@ namespace custom {
         Text text;
         std::vector<std::pair<Window, std::string>> wnd_list;
         Window active;
+        int active_wnd_idx;
 
         Atom NET_CLIENT_LIST;
         Atom NET_ACTIVE_WINDOW;
+
+        KeyCode alt_kc, tab_kc, grave_kc;
+        unsigned int alt_mask;
+        bool alttab_mode;
+        int atsel_wnd_idx;
 
         void refresh_list() {
             // get list of wm-managed windows.
@@ -314,7 +320,29 @@ namespace custom {
                     &actual_format, &nitems, &bytes_after,
                     (unsigned char**)&prop);
             active = prop[0];
+            active_wnd_idx = -1;
+            for (int i = 0; i < wnd_list.size(); i++) {
+                if (wnd_list[i].first == active) {
+                    active_wnd_idx = i;
+                    break;
+                }
+            }
             XFree(prop);
+        }
+
+        void activate_window(Window tgt) {
+            XClientMessageEvent msg;
+            msg.type = ClientMessage;
+            msg.message_type = NET_ACTIVE_WINDOW;
+            msg.window = tgt;
+            msg.format = 32;
+            msg.data.l[0] = 1;
+            msg.data.l[1] = msg.data.l[2] = msg.data.l[3] = msg.data.l[4]
+                = 0;
+            XSendEvent(dpy, root, false,
+                    SubstructureNotifyMask | SubstructureRedirectMask,
+                    (XEvent*)(&msg));
+            XFlush(dpy);
         }
 
         void click(int x) {
@@ -326,32 +354,53 @@ namespace custom {
             else {
                 return;
             }
-            XClientMessageEvent msg;
-            msg.type = ClientMessage;
-            msg.message_type = NET_ACTIVE_WINDOW;
-            msg.window = w;
-            msg.format = 32;
-            msg.data.l[0] = 1;
-            msg.data.l[1] = msg.data.l[2] = msg.data.l[3] = msg.data.l[4]
-                = 0;
-            XSendEvent(dpy, root, false,
-                    SubstructureNotifyMask | SubstructureRedirectMask,
-                    (XEvent*)(&msg));
-            XFlush(dpy);
+            activate_window(w);
+        }
+
+        void set_keyreleasemask(Window win) {
+            // select input on given; don't use XSelectInput because that just
+            // replaces the old input mask (so any previous mask is just
+            // tossed away)
+            XWindowAttributes get_attrs;
+            XGetWindowAttributes(gfx::dpy, win, &get_attrs);
+            XSetWindowAttributes set_attrs;
+            set_attrs.event_mask =
+                get_attrs.your_event_mask|KeyReleaseMask|SubstructureNotifyMask;
+            XChangeWindowAttributes(gfx::dpy, win, CWEventMask, &set_attrs);
+
+            // select input on all children of given
+            Window root, parent;
+            Window *children;
+            unsigned int nchildren;
+            XQueryTree(gfx::dpy, win, &root, &parent, &children, &nchildren);
+            while (nchildren--) {
+                set_keyreleasemask(children[nchildren]);
+            }
+            XFree(children);
         }
 
     public:
         Taskbar() : text("symbol", "white") {
             NET_CLIENT_LIST = XInternAtom(dpy, "_NET_CLIENT_LIST", true);
             NET_ACTIVE_WINDOW = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", true);
+
+            tab_kc = XKeysymToKeycode(gfx::dpy, XK_Tab);
+            alt_kc = XKeysymToKeycode(gfx::dpy, XK_Alt_L);
+            grave_kc = XKeysymToKeycode(gfx::dpy, XK_grave);
+            alt_mask = Mod1Mask;
+            set_keyreleasemask(gfx::root);
+            XGrabKey(gfx::dpy, tab_kc, alt_mask, gfx::root, true,
+                    GrabModeAsync, GrabModeAsync);
+            XGrabKey(gfx::dpy, grave_kc, alt_mask, gfx::root, true,
+                    GrabModeAsync, GrabModeAsync);
+            alttab_mode = false;
         }
         virtual void update(Event const& ev) {
             if (ev.type == Startup) {
                 refresh_list();
                 refresh_active();
-                std::cerr << wnd_list.size() << std::endl;
             }
-            if (ev.type == PropertyNotify) {
+            else if (ev.type == PropertyNotify) {
                 if (ev.xproperty.atom == NET_CLIENT_LIST) {
                     refresh_list();
                 }
@@ -363,6 +412,38 @@ namespace custom {
                     && ev.xbutton.x < startx+width) {
                 click(ev.xbutton.x);
             }
+            else if (ev.type == MapNotify) {
+                set_keyreleasemask(ev.xmap.window);
+            }
+            else if (ev.type == KeyPress && ev.xkey.state == alt_mask
+                    && !wnd_list.empty()
+                    && (ev.xkey.keycode == tab_kc
+                        || ev.xkey.keycode == grave_kc)) {
+                // either alt-tab was pressed for the first time, or the user
+                // pressed alt-tab earlier and is now cycling by holding alt
+                // and repeatedly pressing tab.
+                if (!alttab_mode) {
+                    alttab_mode = true;
+                    atsel_wnd_idx = active_wnd_idx;
+                }
+                if (ev.xkey.keycode == tab_kc) {
+                    // tab --> forward
+                    atsel_wnd_idx = (atsel_wnd_idx+1) % wnd_list.size();
+                }
+                else {
+                    // grave --> back
+                    atsel_wnd_idx = (atsel_wnd_idx > 0) ? atsel_wnd_idx-1
+                                                        : wnd_list.size()-1;
+                }
+            }
+            else if (ev.type == KeyRelease && ev.xkey.keycode == alt_kc
+                    && alttab_mode) {
+                // the user released the alt key; end the window selection
+                alttab_mode = false;
+                if (atsel_wnd_idx > 0 && atsel_wnd_idx < wnd_list.size()) {
+                    activate_window(wnd_list[atsel_wnd_idx].first);
+                }
+            }
             else {
                 return; // ==> no redraw
             }
@@ -371,21 +452,29 @@ namespace custom {
             fill_back(startx, width, "black");
             for (int i = 0; i < wnd_list.size(); i++) {
                 int x = startx+(TGT_WIDTH*i);
-                if (wnd_list[i].first == active) {
+
+                // if the alttab-sel'd window is the same as the currently
+                // active window, draw as an alttab-sel'd window.
+                if (alttab_mode && i == atsel_wnd_idx) {
+                    // use white on red to highlight
+                    fill_back(x, TGT_WIDTH, "red");
+                }
+                else if (!alttab_mode && wnd_list[i].first == active) {
                     // use black on white to highlight
                     text.col = "black";
                     fill_back(x, TGT_WIDTH, "white");
                 }
+
                 text = wnd_list[i].second;
                 text.draw(x+(TGT_WIDTH/2));
-                if (wnd_list[i].first == active) {
-                    // reset the color to normal.
-                    text.col = "white";
-                }
+
+                // reset the color to normal (if it changed...)
+                text.col = "white";
             }
         }
         virtual ETList get_relevant_event_types() const {
-            return {Startup, ButtonPress, PropertyNotify};
+            return {Startup, ButtonPress, PropertyNotify, KeyPress,
+                KeyRelease};
         }
     };
 
