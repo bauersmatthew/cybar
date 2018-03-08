@@ -223,13 +223,13 @@ namespace custom {
             long volume;
             snd_mixer_selem_get_playback_volume(
                     elem, SND_MIXER_SCHN_MONO, &volume);
-            int muted;
+            int not_muted;
             snd_mixer_selem_get_playback_switch(
-                    elem, SND_MIXER_SCHN_MONO, &muted);
+                    elem, SND_MIXER_SCHN_MONO, &not_muted);
             snd_mixer_close(handle);
             long percent = (100*(volume-vol_min))/vol_max;
 
-            text.col = muted ? "red" : "white";
+            text.col = (!not_muted) ? "red" : "white";
 
             // draw
             if (sym_mode && (percent == last)) {
