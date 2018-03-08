@@ -442,7 +442,7 @@ namespace custom {
                     && alttab_mode) {
                 // the user released the alt key; end the window selection
                 alttab_mode = false;
-                if (atsel_wnd_idx > 0 && atsel_wnd_idx < wnd_list.size()) {
+                if (atsel_wnd_idx >= 0 && atsel_wnd_idx < wnd_list.size()) {
                     activate_window(wnd_list[atsel_wnd_idx].first);
                 }
             }
@@ -476,7 +476,7 @@ namespace custom {
         }
         virtual ETList get_relevant_event_types() const {
             return {Startup, ButtonPress, PropertyNotify, KeyPress,
-                KeyRelease};
+                KeyRelease, MapNotify};
         }
     };
 
