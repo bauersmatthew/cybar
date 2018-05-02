@@ -374,11 +374,17 @@ namespace custom {
             Window root, parent;
             Window *children;
             unsigned int nchildren;
-            XQueryTree(gfx::dpy, win, &root, &parent, &children, &nchildren);
+            if (!XQueryTree(
+                        gfx::dpy, win, &root, &parent, &children, &nchildren)) {
+                return;
+            }
+
             while (nchildren--) {
                 set_keyreleasemask(children[nchildren]);
             }
-            XFree(children);
+            if (children) {
+                XFree(children);
+            }
         }
 
     public:

@@ -14,6 +14,10 @@
 
 #include "custom.h"
 
+int silent_xerror_handler(Display*, XErrorEvent*) {
+    return 0;
+}
+
 /* gfx:: implementations. */
 std::unordered_map<std::string, gfx::XftColorWrapper> gfx::colors;
 gfx::XftColorWrapper::XftColorWrapper() : XftColorWrapper(0) {}
@@ -120,6 +124,8 @@ void gfx::flip() {
 
 void gfx::init() {
     XInitThreads();
+    XSetErrorHandler(&silent_xerror_handler);
+
     dpy = XOpenDisplay(NULL);
     if (!dpy) {
         throw bar::Error("failed to open X connection");
